@@ -1,6 +1,8 @@
 import os
 import requests
 import streamlit as st
+import pdfplumber  # <-- added
+from langchain.schema import Document  # <-- added
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import CharacterTextSplitter
