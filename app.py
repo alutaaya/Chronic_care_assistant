@@ -102,18 +102,18 @@ def extract_text_and_tables(pdf_path):
             for table_idx, table in enumerate(tables):
                 if not table:
                     continue
-                # Convert table (list of lists) into readable text
-                table_text = "\n".join([" | ".join(row) for row in table if any(row)])
-                documents.append(
-                    Document(
-                        page_content=table_text,
-                        metadata={
-                            "source": os.path.basename(pdf_path),
-                            "page": page_num,
-                            "type": f"table_{table_idx+1}",
-                        },
-                    )
-                )
+                safe_rows = []
+                for row in table:
+                    if not row or not isinstance(row, (list, tuple)):
+                        continue  # skip invalid rows
+                        # convert None to empty string
+                    safe_row = [str(cell) if cell is not None else "" for cell in row]
+                    safe_rows.append(" | ".join(safe_row))
+                if safe_rows:
+                    
+                    table_text = "\n".join(safe_rows)
+                    documents.append(
+                    Document(page_content=table_text,metadata={"source": os.path.basename(pdf_path),"page": page_num,"type": f"table_{table_idx+1}", }, ))
 
     return documents
 
