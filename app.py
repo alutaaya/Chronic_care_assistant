@@ -2,11 +2,14 @@ import os
 import requests
 import streamlit as st
 import pdfplumber  # <-- added
-from langchain_core.documents import Document # <-- added
+from langchain_core.documents import Document  # <-- added
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import CharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
+# ⛔️ OLD (deprecated)
+# from langchain_community.embeddings import HuggingFaceEmbeddings
+# ✅ NEW (replacement)
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_groq import ChatGroq
 
@@ -22,11 +25,15 @@ PDF_FILES = {
     "Consolidated-HIV-and-AIDS-Guidelines-2022.pdf": "1rY_UE-sIw4f5Z5VUt0pyllPs7tSENsSr",
     "PrEP.pdf": "1n0Mtds2dSb6lCaJm6Ic8-NtaEIHnH5UQ",
     "NTLP_manual.pdf": "1SEPZ9j5zew9XcIeCdrXwzcopCulf_APZ",
-    "UCG.pdf":"1f68UdsRdYwXW5DNN61pBNQXK7TkpMc0o","PMDT.pdf":"1zhFrJC90olY7aaledw_RyKR_sC58XV2j",
-    "HTS.pdf":"1mI8r0B2GmRGoWrJAEAOBZcpXb5znPmWs","IPC.pdf":"1DKmCrueBly6jFtUP9Ox631jqzGDsR2tV",
-    "TB_children.pdf":"1HUtgNMO_D-CK6ofLPf6egteHG7lhsd5S","prevention.pdf":"1yTZ6JiB4ky8CcGK9tabkH3kLWCT2js4J",
-    "TB_Lep":"1UUKe1PPgti_Gm6RgDq-kBexv2BgYXxTF","CKD.pdf":"1sOVGB7R1IEu3kWQrdd0IZCNmxXHJ3jWC",
-    "DSD.pdf":"1WRerkPmfRAzgPS234yP56aJ8zYXPwcjT"
+    "UCG.pdf": "1f68UdsRdYwXW5DNN61pBNQXK7TkpMc0o",
+    "PMDT.pdf": "1zhFrJC90olY7aaledw_RyKR_sC58XV2j",
+    "HTS.pdf": "1mI8r0B2GmRGoWrJAEAOBZcpXb5znPmWs",
+    "IPC.pdf": "1DKmCrueBly6jFtUP9Ox631jqzGDsR2tV",
+    "TB_children.pdf": "1HUtgNMO_D-CK6ofLPf6egteHG7lhsd5S",
+    "prevention.pdf": "1yTZ6JiB4ky8CcGK9tabkH3kLWCT2js4J",
+    "TB_Lep": "1UUKe1PPgti_Gm6RgDq-kBexv2BgYXxTF",
+    "CKD.pdf": "1sOVGB7R1IEu3kWQrdd0IZCNmxXHJ3jWC",
+    "DSD.pdf": "1WRerkPmfRAzgPS234yP56aJ8zYXPwcjT"
 }
 
 
@@ -57,8 +64,6 @@ for filename, file_id in PDF_FILES.items():
         st.success(f"{filename} downloaded successfully!")
     else:
         st.info(f"{filename} already exists.")
-
-
 
 # --- 2. Streamlit Page Config ---
 st.set_page_config(page_title="Uganda Chronic care Assistant", layout="wide")
@@ -106,14 +111,21 @@ def extract_text_and_tables(pdf_path):
                 for row in table:
                     if not row or not isinstance(row, (list, tuple)):
                         continue  # skip invalid rows
-                        # convert None to empty string
+                    # convert None to empty string
                     safe_row = [str(cell) if cell is not None else "" for cell in row]
                     safe_rows.append(" | ".join(safe_row))
                 if safe_rows:
-                    
                     table_text = "\n".join(safe_rows)
                     documents.append(
-                    Document(page_content=table_text,metadata={"source": os.path.basename(pdf_path),"page": page_num,"type": f"table_{table_idx+1}", }, ))
+                        Document(
+                            page_content=table_text,
+                            metadata={
+                                "source": os.path.basename(pdf_path),
+                                "page": page_num,
+                                "type": f"table_{table_idx+1}",
+                            },
+                        )
+                    )
 
     return documents
 
@@ -171,6 +183,7 @@ def retrieve_relevant_chunks(query, vectorstore):
         return vectorstore.similarity_search(query, k=16)
     return []
 
+
 def answer_query(query, llm, vectorstore):
     if not llm:
         return "Error: Language Model unavailable."
@@ -183,7 +196,7 @@ def answer_query(query, llm, vectorstore):
 
     context = "\n\n".join([d.page_content for d in docs])
     prompt = (
-        "You are a Ugandan chronic healthcare  assistant. Answer using ONLY the provided context. "
+        "You are a Ugandan chronic healthcare assistant. Answer using ONLY the provided context. "
         "If the answer is not in the context, say you don't know. Be concise.\n\n"
         f"Context:\n{context}\n\nQuestion:\n{query}\nAnswer:"
     )
@@ -192,6 +205,7 @@ def answer_query(query, llm, vectorstore):
         return response.content.strip() if response else "Error: Empty response."
     except Exception as e:
         return f"Error invoking LLM: {e}"
+
 
 # --- 5. Streamlit UI ---
 def main():
@@ -223,6 +237,7 @@ def main():
         st.markdown(f"**You:** {q}")
         st.markdown(f"**Assistant:** {a}")
         st.markdown("---")
+
 
 if __name__ == "__main__":
     main()
