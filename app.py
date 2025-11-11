@@ -12,8 +12,6 @@ from langchain_text_splitters import CharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_groq import ChatGroq
-import logging  # <-- added to suppress pdfminer warnings
-logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
 # --- 0. Load environment variables ---
 load_dotenv()
@@ -88,53 +86,46 @@ def extract_text_and_tables(pdf_path):
     """
     documents = []
 
-    try:
-        with pdfplumber.open(pdf_path) as pdf:
-            for page_num, page in enumerate(pdf.pages, start=1):
-                try:
-                    # --- Extract normal text ---
-                    text = page.extract_text()
-                    if text:
-                        documents.append(
-                            Document(
-                                page_content=text,
-                                metadata={
-                                    "source": os.path.basename(pdf_path),
-                                    "page": page_num,
-                                    "type": "text",
-                                },
-                            )
-                        )
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_num, page in enumerate(pdf.pages, start=1):
+            # --- Extract normal text ---
+            text = page.extract_text()
+            if text:
+                documents.append(
+                    Document(
+                        page_content=text,
+                        metadata={
+                            "source": os.path.basename(pdf_path),
+                            "page": page_num,
+                            "type": "text",
+                        },
+                    )
+                )
 
-                    # --- Extract tables as text blocks ---
-                    tables = page.extract_tables()
-                    for table_idx, table in enumerate(tables):
-                        if not table:
-                            continue
-                        safe_rows = []
-                        for row in table:
-                            if not row or not isinstance(row, (list, tuple)):
-                                continue  # skip invalid rows
-                            # convert None to empty string
-                            safe_row = [str(cell) if cell is not None else "" for cell in row]
-                            safe_rows.append(" | ".join(safe_row))
-                        if safe_rows:
-                            table_text = "\n".join(safe_rows)
-                            documents.append(
-                                Document(
-                                    page_content=table_text,
-                                    metadata={
-                                        "source": os.path.basename(pdf_path),
-                                        "page": page_num,
-                                        "type": f"table_{table_idx+1}",
-                                    },
-                                )
-                            )
-                except Exception as e:
-                    st.warning(f"⚠️ Skipping page {page_num} of {os.path.basename(pdf_path)} due to parsing error: {e}")
+            # --- Extract tables as text blocks ---
+            tables = page.extract_tables()
+            for table_idx, table in enumerate(tables):
+                if not table:
                     continue
-    except Exception as e:
-        st.error(f"❌ Could not open {os.path.basename(pdf_path)}: {e}")
+                safe_rows = []
+                for row in table:
+                    if not row or not isinstance(row, (list, tuple)):
+                        continue  # skip invalid rows
+                    # convert None to empty string
+                    safe_row = [str(cell) if cell is not None else "" for cell in row]
+                    safe_rows.append(" | ".join(safe_row))
+                if safe_rows:
+                    table_text = "\n".join(safe_rows)
+                    documents.append(
+                        Document(
+                            page_content=table_text,
+                            metadata={
+                                "source": os.path.basename(pdf_path),
+                                "page": page_num,
+                                "type": f"table_{table_idx+1}",
+                            },
+                        )
+                    )
 
     return documents
 
