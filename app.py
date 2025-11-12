@@ -81,14 +81,11 @@ def load_embeddings():
 # --- 2. Extract text and tables from PDF ---
 def extract_text_and_tables(pdf_path):
     """
-    Safely extract text and tables from a PDF.
-    Falls back to PyPDFLoader if pdfplumber hits graphics/pattern issues.
+    Safely extract text and tables from a PDF. Falls back to PyPDFLoader if 
+    pdfplumber hits graphics/pattern issues or extracts nothing.
     """
-    import pdfplumber
-    from langchain_core.documents import Document
-    import os
-
     documents = []
+    pdfplumber_success = False
 
     try:
         with pdfplumber.open(pdf_path) as pdf:
@@ -101,9 +98,9 @@ def extract_text_and_tables(pdf_path):
                             Document(
                                 page_content=text,
                                 metadata={
-                                    "source": os.path.basename(pdf_path),
-                                    "page": page_num,
-                                    "type": "text",
+                                    'source': os.path.basename(pdf_path),
+                                    'page': page_num,
+                                    'type': 'text',
                                 },
                             )
                         )
@@ -120,38 +117,46 @@ def extract_text_and_tables(pdf_path):
                         for row in table:
                             if not row or not isinstance(row, (list, tuple)):
                                 continue
-                            safe_row = [str(cell) if cell is not None else "" for cell in row]
-                            safe_rows.append(" | ".join(safe_row))
+                            # Ensure cells are strings; use empty string for None
+                            safe_row = [str(cell) if cell is not None else '' for cell in row] 
+                            safe_rows.append('|'.join(safe_row)) # Use pipes for clarity
+
                         if safe_rows:
-                            table_text = "\n".join(safe_rows)
+                            table_text = '\n'.join(safe_rows)
                             documents.append(
                                 Document(
                                     page_content=table_text,
                                     metadata={
-                                        "source": os.path.basename(pdf_path),
-                                        "page": page_num,
-                                        "type": f"table_{table_idx+1}",
+                                        'source': os.path.basename(pdf_path),
+                                        'page': page_num,
+                                        'type': f"table_{table_idx+1}",
                                     },
                                 )
                             )
                 except Exception as e:
                     print(f"⚠️ Skipping tables on page {page_num}: {e}")
-
-        # If nothing extracted at all, fallback to PyPDFLoader
-        if not documents:
-            raise ValueError("No text extracted using pdfplumber")
+        
+        # If pdfplumber successfully opened the file, mark success
+        pdfplumber_success = True
 
     except Exception as e:
-        print(f"⚠️ pdfplumber failed on {pdf_path} — Falling back to PyPDFLoader ({e})")
+        print(f"⚠️ pdfplumber failed on {pdf_path} — Attempting fallback ({e})")
+        pdfplumber_success = False
+
+    # Fallback to PyPDFLoader only if pdfplumber could not process the file
+    # or extracted nothing.
+    if not pdfplumber_success or not documents:
+        print(f"Falling back to PyPDFLoader for {pdf_path}")
         try:
             loader = PyPDFLoader(pdf_path)
-            documents = loader.load()
+            # Overwrite documents with PyPDFLoader results
+            documents = loader.load() 
         except Exception as e2:
             print(f"❌ PyPDFLoader also failed on {pdf_path}: {e2}")
-            documents = []
+            # If fallback fails, ensure we still return an empty list if nothing worked
+            documents = [] 
 
     return documents
-
 # --- 3. Build or Load Vector Store ---
 @st.cache_resource
 def load_vectorstore():
