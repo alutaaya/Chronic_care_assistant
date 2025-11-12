@@ -13,6 +13,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_groq import ChatGroq
 
+
 # --- 0. Load environment variables ---
 load_dotenv()
 
@@ -80,55 +81,76 @@ def load_embeddings():
 # --- 2. Extract text and tables from PDF ---
 def extract_text_and_tables(pdf_path):
     """
-    Extract text and tables from a PDF file.
-    Tables are extracted as text content (not numeric structure).
-    Returns a list of LangChain Documents with metadata.
+    Safely extract text and tables from a PDF.
+    Falls back to PyPDFLoader if pdfplumber hits graphics/pattern issues.
     """
+    import pdfplumber
+    from langchain_core.documents import Document
+    import os
+
     documents = []
 
-    with pdfplumber.open(pdf_path) as pdf:
-        for page_num, page in enumerate(pdf.pages, start=1):
-            # --- Extract normal text ---
-            text = page.extract_text()
-            if text:
-                documents.append(
-                    Document(
-                        page_content=text,
-                        metadata={
-                            "source": os.path.basename(pdf_path),
-                            "page": page_num,
-                            "type": "text",
-                        },
-                    )
-                )
-
-            # --- Extract tables as text blocks ---
-            tables = page.extract_tables()
-            for table_idx, table in enumerate(tables):
-                if not table:
-                    continue
-                safe_rows = []
-                for row in table:
-                    if not row or not isinstance(row, (list, tuple)):
-                        continue  # skip invalid rows
-                    # convert None to empty string
-                    safe_row = [str(cell) if cell is not None else "" for cell in row]
-                    safe_rows.append(" | ".join(safe_row))
-                if safe_rows:
-                    table_text = "\n".join(safe_rows)
-                    documents.append(
-                        Document(
-                            page_content=table_text,
-                            metadata={
-                                "source": os.path.basename(pdf_path),
-                                "page": page_num,
-                                "type": f"table_{table_idx+1}",
-                            },
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            for page_num, page in enumerate(pdf.pages, start=1):
+                # --- Extract normal text safely ---
+                try:
+                    text = page.extract_text()
+                    if text:
+                        documents.append(
+                            Document(
+                                page_content=text,
+                                metadata={
+                                    "source": os.path.basename(pdf_path),
+                                    "page": page_num,
+                                    "type": "text",
+                                },
+                            )
                         )
-                    )
+                except Exception as e:
+                    print(f"⚠️ Skipping text on page {page_num}: {e}")
+
+                # --- Extract tables safely ---
+                try:
+                    tables = page.extract_tables()
+                    for table_idx, table in enumerate(tables or []):
+                        if not table:
+                            continue
+                        safe_rows = []
+                        for row in table:
+                            if not row or not isinstance(row, (list, tuple)):
+                                continue
+                            safe_row = [str(cell) if cell is not None else "" for cell in row]
+                            safe_rows.append(" | ".join(safe_row))
+                        if safe_rows:
+                            table_text = "\n".join(safe_rows)
+                            documents.append(
+                                Document(
+                                    page_content=table_text,
+                                    metadata={
+                                        "source": os.path.basename(pdf_path),
+                                        "page": page_num,
+                                        "type": f"table_{table_idx+1}",
+                                    },
+                                )
+                            )
+                except Exception as e:
+                    print(f"⚠️ Skipping tables on page {page_num}: {e}")
+
+        # If nothing extracted at all, fallback to PyPDFLoader
+        if not documents:
+            raise ValueError("No text extracted using pdfplumber")
+
+    except Exception as e:
+        print(f"⚠️ pdfplumber failed on {pdf_path} — Falling back to PyPDFLoader ({e})")
+        try:
+            loader = PyPDFLoader(pdf_path)
+            documents = loader.load()
+        except Exception as e2:
+            print(f"❌ PyPDFLoader also failed on {pdf_path}: {e2}")
+            documents = []
 
     return documents
-
 
 # --- 3. Build or Load Vector Store ---
 @st.cache_resource
